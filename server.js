@@ -5,14 +5,15 @@ http.createServer((request, response) => {
     request.on('error', (err) => {
         console.error(err);
     }).on('data', (chunk) => {
-        // body.push(chunk.toString());
-        body.push(chunk);
+        body.push(chunk.toString());
     }).on('end', () => {
-        body = Buffer.concat(body).toString();
+        // body = Buffer.concat(body).toString();
+        body = body.join("");
         console.log('body', body);
         response.writeHead(200, { 'Content-Type': 'text/html' });
-        response.end(
-            `<html maaa=a >
+        // response.end(' Hello World\n');
+                response.end(
+            `<html maaa=a > 
 <head>
   <style>
 body div #myid{
@@ -32,7 +33,7 @@ body div img{
   </div>
 </body>
 </html>`);
-    });
+    }); 
 }).listen(8088);
 
 console.log('server started');

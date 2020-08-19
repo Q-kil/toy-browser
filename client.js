@@ -35,7 +35,9 @@ class Request {
                 })
             }
             connection.on('data', (data) => {
-                console.log(data.toString());
+                console.log('client --', data.toString());
+                console.log('client end --');
+                
                 parser.receive(data.toString());
                 if (parser.isFinished) {
                     resolve(parser.response);
@@ -112,7 +114,7 @@ class ResponseParser {
           this.headerName += char;
         }
       } else if(this.current === this.WAITING_HEADER_SPACE) {
-        if (char === '') {
+        if (char === ' ') {
           this.current = this.WAITING_HEADER_VALUE;
         }
       } else if(this.current === this.WAITING_HEADER_VALUE) {
@@ -133,7 +135,7 @@ class ResponseParser {
           this.current = this.WAITING_BODY
         }
       } else if(this.current === this.WAITING_BODY) {
-        console.log(char);
+        this.bodyParser.receiveChar(char);
       }
     }
 }
@@ -199,6 +201,6 @@ void async function() {
 
     let response = await request.send();
 
-    console.log(response);
+    console.log('response --', response);
     let dom = parser.parseHTML(response.body);
 }();
