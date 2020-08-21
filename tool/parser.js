@@ -1,7 +1,117 @@
+const css = require('css');
+
 let currentToken = null;
 let currentAttribute = null;
 
 let stack = [{ type: 'document', children: [] }];
+
+// 加入一个新的函数，addCSSRules, 这里我们把CSS规则暂存到一个数组里
+let rules = [];
+function addCSSRules(text) {
+  var ast = css.parse(text);
+  console.log('ast', JSON.stringify(ast, null, "    "));
+  rules.push(...ast.stylesheet.rules);
+}
+
+// .a #a div ; 复合选择器 div#a
+function match(element, selector) {
+  console.log('MATCH', element, selector);
+  if(!selector || !element.attributes)
+    return false;
+
+  if(selector.charAt(0) == '#') {
+    var attr = element.attributes.filter(attr => attr.name === 'id')[0];
+    if(attr && attr.value === selector.replace("#", ""))
+      return true;
+  } else if(selector.charAt(0) == '.') {
+    var attr = element.attributes.filter(attr => attr.name === 'class')[0];
+    if(attr && attr.value === selector.replace('.', ''))
+      return true;
+  } else {
+    if(element.tagName === selector)
+      return true;
+  }
+  return false;
+}
+
+function specificity(selector) {
+  let p = [0, 0, 0, 0];
+  let selectorParts = selector.split(' ');
+  for (let part of selectorParts) {
+    // if (selectorParts.match(/^[a-zA-Z]+([\.|#][a-zA-Z_-][\w-]+)/)) {
+  //     selectorParts.push(RegExp.$1);
+  //     selectorParts = selectorParts.replace(RegExp.$1, '');
+  //     split(selectorParts);
+    // } else 
+    if (part.charAt(0) == '#') {
+      p[1] += 1;
+    } else if (part.charAt(0) == '.') {
+      p[2] += 1;
+    } else {
+      p[3] += 1;
+    }
+  }
+
+  return p;
+}
+
+function compare(sp1, sp2) {
+  if(sp1[0] - sp2[0])
+    return sp1[0] - sp2[0];
+  if(sp1[1] - sp2[1])
+    return sp1[1] - sp2[1];
+  if(sp1[2] - sp2[2])
+    return sp1[2] - sp2[2]  
+  
+  return sp1[3] - sp2[3];
+}
+
+function computeCSS(element) {
+  console.log('rules', rules);
+  console.log('compute CSS for Element', element);
+  var elements = stack.slice().reverse();
+  if(!element.computedStyle)
+    element.computedStyle = {};
+
+  for(let rule of rules) {
+    var selectorParts = rule.selectors[0].split(" ").reverse();
+
+    if(!match(element, selectorParts[0]))
+      continue;
+
+    let matched = false;
+
+    var j = 1;
+    for(var i = 0; i < elements.length; i++) {
+      if(match(elements[i], selectorParts[j])) {
+        j++;
+      }
+    }
+    if(j >= selectorParts.length)
+      matched = true;
+
+    if(matched) {
+      // 如果匹配到，我们要加入
+      // console.log('Element', element, "matched rule", rule);
+      var sp = specificity(rule.selectors[0]);
+      var computedStyle = element.computedStyle;
+      for(let declaration of rule.declarations) {
+        if(!computedStyle[declaration.property])
+          computedStyle[declaration.property] = {};
+          // computedStyle[declaration.property].value = declaration.value;
+
+        if(!computedStyle[declaration.property].specificity) {
+          computedStyle[declaration.property].value = declaration.value;
+          computedStyle[declaration.property].specificity = sp;
+        } else if(compare(computedStyle[declaration.property].specificity, sp) < 0) {
+          computedStyle[declaration.property].value = declaration.value;
+          computedStyle[declaration.property].specificity = sp;
+        }
+      }
+      console.log('element.computedStyle', element.computedStyle);
+    }
+  }
+}
 
 function emit(token) {
   console.log('token', token);
@@ -19,15 +129,22 @@ function emit(token) {
     element.tagName = token.tagName;
 
     for (let p in token) {
+      // 此处HTML解析时&&，CSS计算时 ||，最终是&&，||永远是true
       if (p != 'type' && p != 'tagName')
         element.attributes.push({
           name: p,
           value: token[p]
         })
     }
+    console.log('element', element);
+    
+
+    // 计算CSS时机
+    computeCSS(element);
 
     top.children.push(element);
-    element.parent = top;
+    // 不要写parent 否则会递归
+    // element.parent = top;
 
     if (!token.isSelfClosing)
       stack.push(element);
@@ -37,6 +154,10 @@ function emit(token) {
     if (top.tagName != token.tagName) {
       throw new Error("Tag start end doesn't match!")
     } else {
+      // 遇到style标签时，执行添加CSS规则的操作
+      if(top.tagName === 'style') {
+        addCSSRules(top.children[0].content);
+      }
       stack.pop();
     }
     currentTextNode = null;
@@ -257,52 +378,14 @@ function UnquotedAttributeValue(c) {
 function selfClosingStartTag(c) {
   if (c == '>') {
     currentToken.isSelfClosing = true;
+    // 注意：在处理CSS计算属性的时候, 无法找到name == id，因为没有加emit
+    emit(currentToken);
     return data;
   } else if (c == 'EOF') {
 
   } else {
 
   }
-}
-
-function match(element, selector) {
-  if (!selector || !element.attributes) {
-    return false;
-  }
-  if (selector.charAt(0) == '#') {
-    let attr = element.attributes.filter(attr => attr.name == 'id')[0];
-    if (attr && attr.value == selector.replace('#', '')) {
-      return true;
-    }
-  } else if (selector.charAt(0) == '.') {
-    let attr = element.attributes.filter(attr => attr.name == 'class')[0];
-    if (attr && attr.value == selector.replace('.', '')) {
-      return true;
-    }
-  } else {
-    if (element.tagName == selector)
-      return true;
-  }
-  return false;
-}
-
-function specificity(selector) {
-  let p = [0, 0, 0, 0];
-  let selectorParts = selector.split(' ');
-  for (let part of selectorParts) {
-    if (selectorParts.match(/^[a-zA-Z]+([\.|#][a-zA-Z_-][\w-]+)/)) {
-      selectorParts.push(RegExp.$1);
-      selectorParts = selectorParts.replace(RegExp.$1, '');
-      split(selectorParts);
-    } else if (part.charAt(0) == '#') {
-      p[1] += 1;
-    } else if (part.charAt(0) == '.') {
-      p[2] += 1;
-    } else {
-      p[3] += 1;
-    }
-  }
-  return p;
 }
 
 module.exports.parseHTML = function parseHTML(html) {
@@ -312,5 +395,6 @@ module.exports.parseHTML = function parseHTML(html) {
     state = state(c);
   }
   state = state(EOF)
-  console.log(stack[0]);
+  console.log('stack[0]', stack[0]);
+  return stack[0];
 }
