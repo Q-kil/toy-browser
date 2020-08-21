@@ -59,7 +59,7 @@ function data(c) {
     return tagOpen;
   } else if (c == EOF) {
     emit({
-      type: "EOF"
+      type: 'EOF'
     })
     return;
   } else {
